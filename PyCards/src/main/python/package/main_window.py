@@ -1,3 +1,4 @@
+import os
 from PySide2 import QtCore, QtWidgets, QtGui
 
 from package.api.card import Collection, Card, COLLECTION_PATH
@@ -30,7 +31,7 @@ class QuizWindow(QtWidgets.QWidget):
 
     def __init__(self, collection=None, parent=None):
         super().__init__(parent)
-        self.collection = collection if collection else Collection()
+        self.collection = collection or Collection()
         self.setWindowFlags(QtCore.Qt.FramelessWindowHint)  # Enlever les décorations de la fenêtre
         self.setFixedSize(1000, 300)  # Taille fixe pour éviter le redimensionnement
         self.setup_ui()
@@ -124,14 +125,14 @@ class QuizWindow(QtWidgets.QWidget):
     def stop_quiz(self):
         self.quizStopped.emit()  # Émettre le signal lorsque le quiz est arrêté
 
-class MainWindow(QtWidgets.QMainWindow):
+class MainWindow(QtWidgets.QWidget):
     def __init__(self, ctx) -> None:
         super().__init__()
         self.ctx = ctx
         self.setWindowTitle("PyCards")
-        self.collection = Collection()
+        self.collections = {}
         self.setup_ui()
-        self.import_path = ""
+        self.load_collections()
         
     def setup_ui(self) -> None:
         self.create_widgets()
@@ -140,65 +141,53 @@ class MainWindow(QtWidgets.QMainWindow):
         self.add_widgets_to_layouts()
         self.setup_connections()
     
-    def create_widgets(self) -> None:
-        # Créer le widget central
-        self.central_widget = QtWidgets.QWidget()
-        self.setCentralWidget(self.central_widget)
-        
+    def create_widgets(self) -> None:        
         # Widgets
-        self.toolbar = QtWidgets.QToolBar()
+        self.lw_collections = QtWidgets.QListWidget()
         self.table_widget = QtWidgets.QTableWidget()
         self.btn_add_card = QtWidgets.QPushButton("Ajouter une carte")
         self.btn_start_quiz = QtWidgets.QPushButton("Commencer le quiz")
-        
-        # Icons
-        self.icon_load_collection = QtGui.QIcon(self.ctx.get_resource("download.svg"))
-        self.icon_export_collection = QtGui.QIcon(self.ctx.get_resource("export.svg"))
-        
-        # Actions
-        self.act_load = self.toolbar.addAction(self.icon_load_collection, "Load Collection")
-        self.act_export = self.toolbar.addAction(self.icon_export_collection, "Export Collection")
 
     def modify_widgets(self) -> None:
+        css_file = self.ctx.get_resource("style.css")
+        with open(css_file, "r") as f:
+            self.setStyleSheet(f.read())
+            
         self.table_widget.setRowCount(0)  # Initialiser avec 0 lignes
         self.table_widget.setColumnCount(2)
         self.table_widget.setHorizontalHeaderLabels(['Question', 'Réponse'])
         self.table_widget.horizontalHeader().setSectionResizeMode(QtWidgets.QHeaderView.Stretch)
+        self.table_widget.verticalHeader().setVisible(False)
+        self.table_widget.setShowGrid(False)
 
     def create_layouts(self) -> None:
-        self.main_layout = QtWidgets.QGridLayout()
-        self.central_widget.setLayout(self.main_layout)
-        self.quiz_layout = QtWidgets.QVBoxLayout()
+        self.main_layout = QtWidgets.QGridLayout(self)
 
     def add_widgets_to_layouts(self) -> None:
-        self.addToolBar(self.toolbar)
-        self.main_layout.addWidget(self.table_widget, 0, 0, 1, 2)
-        self.main_layout.addWidget(self.btn_add_card, 1, 0)
-        self.main_layout.addWidget(self.btn_start_quiz, 1, 1)
+        self.main_layout.addWidget(self.lw_collections, 0, 0, 2, 1)
+        self.main_layout.addWidget(self.table_widget, 0, 1, 1, 2)
+        self.main_layout.addWidget(self.btn_add_card, 1, 1)
+        self.main_layout.addWidget(self.btn_start_quiz, 1, 2)
 
     def setup_connections(self) -> None:
-        self.act_load.triggered.connect(self.load_collection)
-        self.act_export.triggered.connect(self.export_collection)
         self.btn_add_card.clicked.connect(self.add_card)
         self.btn_start_quiz.clicked.connect(self.start_quiz)
+        self.lw_collections.itemClicked.connect(self.populate_table_widget)
         
-    def load_collection(self) -> None:
-        file_dialog = QtWidgets.QFileDialog(self)
-        file_dialog.setMimeTypeFilters(["json"])
-        file_dialog.setDirectory(COLLECTION_PATH)
-        if file_dialog.exec_() == QtWidgets.QDialog.Accepted:
-            selected_urls = file_dialog.selectedUrls()
-            if selected_urls:
-                collection_url = selected_urls[0]
-                collection_path = collection_url.toLocalFile()
-                self.import_path = collection_path
-                print("Selected file:", collection_path)
-                self.collection.load_collection(collection_path)
-                self.populate_table_widget()
+    def load_collections(self) -> None:  # sourcery skip: extract-method, use-named-expression
+        self.lw_collections.clear()
+        for file in os.listdir(COLLECTION_PATH):
+            if file.endswith('.json'):
+                file_name = file.split('.')[0]
+                self.lw_collections.addItem(file_name)
+                collection = Collection()
+                collection.load_collection(os.path.join(COLLECTION_PATH, file))
+                self.collections[file_name] = collection
                 
     def populate_table_widget(self):
-        self.table_widget.setRowCount(len(self.collection.cards))
-        for row, card in enumerate(self.collection.cards):
+        collection = self.collections[self.lw_collections.currentItem().text()]
+        self.table_widget.setRowCount(len(collection.cards))
+        for row, card in enumerate(collection.cards):
             question_item = QtWidgets.QTableWidgetItem(card.question)
             answer_item = QtWidgets.QTableWidgetItem(card.answer)
             
@@ -210,23 +199,16 @@ class MainWindow(QtWidgets.QMainWindow):
             self.table_widget.setItem(row, 1, answer_item)
             
     def add_card(self) -> None:
+        collection = self.collections[self.lw_collections.currentItem().text()]
         dialog = AddCardDialog(self)
         if dialog.exec_() == QtWidgets.QDialog.Accepted:
             question, answer = dialog.get_question_and_answer()
-            self.collection.add_card(question, answer)
-            self.populate_table_widget() 
-            
-    def export_collection(self) -> None:
-        collection_name, ok = QtWidgets.QInputDialog.getText(self, 
-                                                             "Export Collection",
-                                                             "Enter collection name:")
-        
-        if ok:
-            self.collection.export_collection(COLLECTION_PATH, f"{collection_name}.json")
-            print(f"Collection {collection_name} exported successfully!")
+            collection.add_card(question, answer)
+            self.populate_table_widget()
     
     def start_quiz(self) -> None:
-        self.wdg_quiz = QuizWindow(self.collection)
+        collection = self.collections[self.lw_collections.currentItem().text()]
+        self.wdg_quiz = QuizWindow(collection)
         self.wdg_quiz.quizStopped.connect(self.show_main_window)  # Connecter le signal quizStopped
         self.hide()
         self.wdg_quiz.show()
@@ -243,12 +225,7 @@ class MainWindow(QtWidgets.QMainWindow):
             "Are you sure to quit?", QtWidgets.QMessageBox.Yes | 
             QtWidgets.QMessageBox.No, QtWidgets.QMessageBox.No)
 
-        if reply == QtWidgets.QMessageBox.Yes:
-            if self.import_path:
-                self.collection.export_collection(self.import_path)
-            event.accept()
-        else:
-            event.ignore()
-
+        for collection in self.collections.values():
+            collection.export_collection(COLLECTION_PATH)
 
         
