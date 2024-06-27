@@ -163,6 +163,9 @@ class MainWindow(QtWidgets.QWidget):
 
     def create_layouts(self) -> None:
         self.main_layout = QtWidgets.QGridLayout(self)
+        self.main_layout.setColumnStretch(0, 1)
+        self.main_layout.setColumnStretch(1, 1)
+        self.main_layout.setColumnStretch(2, 1)
 
     def add_widgets_to_layouts(self) -> None:
         self.main_layout.addWidget(self.lw_collections, 0, 0, 1, 1)
@@ -175,7 +178,8 @@ class MainWindow(QtWidgets.QWidget):
         self.btn_add_card.clicked.connect(self.add_card)
         self.btn_start_quiz.clicked.connect(self.start_quiz)
         self.lw_collections.itemClicked.connect(self.populate_table_widget)
-        self.lw_collections.itemDoubleClicked.connect(self.rename_collection)
+        self.lw_collections.setContextMenuPolicy(QtCore.Qt.CustomContextMenu)
+        self.lw_collections.customContextMenuRequested.connect(self.show_context_menu)
         self.btn_add_collection.clicked.connect(self.add_collection)
         
     def load_collections(self) -> None:  # sourcery skip: extract-method, use-named-expression
@@ -201,15 +205,31 @@ class MainWindow(QtWidgets.QWidget):
             
             self.table_widget.setItem(row, 0, question_item)
             self.table_widget.setItem(row, 1, answer_item)
+            
+    def show_context_menu(self, position):  # sourcery skip: use-named-expression
+        item = self.lw_collections.itemAt(position)
+        if item:
+            context_menu = QtWidgets.QMenu(self)
+
+            rename_action = context_menu.addAction("Renommer")
+            delete_action = context_menu.addAction("Supprimer")
+
+            action = context_menu.exec_(self.lw_collections.mapToGlobal(position))
+
+            if action == rename_action:
+                self.rename_collection(item)
+            elif action == delete_action:
+                self.collections.pop(item.text())
+                os.remove(os.path.join(COLLECTION_PATH, f"{item.text()}.json"))
+                self.lw_collections.takeItem(self.lw_collections.row(item))
     
-    def rename_collection(self) -> None:
-        current_item = self.lw_collections.currentItem()
-        new_name, ok = QtWidgets.QInputDialog.getText(self, 'Renommer la collection', 'Nouveau nom:', text=current_item.text())
+    def rename_collection(self, item) -> None:
+        new_name, ok = QtWidgets.QInputDialog.getText(self, 'Renommer la collection', 'Nouveau nom:', text=item.text())
         if ok:
-            os.remove(os.path.join(COLLECTION_PATH, f"{current_item.text()}.json"))
-            collection = self.collections.pop(current_item.text())
+            os.remove(os.path.join(COLLECTION_PATH, f"{item.text()}.json"))
+            collection = self.collections.pop(item.text())
             self.collections[new_name] = collection
-            current_item.setText(new_name)
+            item.setText(new_name)
     
     def add_collection(self) -> None:
         file_name, ok = QtWidgets.QInputDialog.getText(self, 'Ajouter une collection', 'Nom de la collection:')

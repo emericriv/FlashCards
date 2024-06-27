@@ -18,5 +18,10 @@
         "question": "capitale france ?",
         "answer": "paris",
         "understood": 6
+    },
+    {
+        "question": "prenom",
+        "answer": "Emeric",
+        "understood": 5
     }
 ]
