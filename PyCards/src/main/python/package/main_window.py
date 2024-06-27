@@ -144,6 +144,7 @@ class MainWindow(QtWidgets.QWidget):
     def create_widgets(self) -> None:        
         # Widgets
         self.lw_collections = QtWidgets.QListWidget()
+        self.btn_add_collection = QtWidgets.QPushButton("Ajouter une collection")
         self.table_widget = QtWidgets.QTableWidget()
         self.btn_add_card = QtWidgets.QPushButton("Ajouter une carte")
         self.btn_start_quiz = QtWidgets.QPushButton("Commencer le quiz")
@@ -164,7 +165,8 @@ class MainWindow(QtWidgets.QWidget):
         self.main_layout = QtWidgets.QGridLayout(self)
 
     def add_widgets_to_layouts(self) -> None:
-        self.main_layout.addWidget(self.lw_collections, 0, 0, 2, 1)
+        self.main_layout.addWidget(self.lw_collections, 0, 0, 1, 1)
+        self.main_layout.addWidget(self.btn_add_collection, 1, 0)
         self.main_layout.addWidget(self.table_widget, 0, 1, 1, 2)
         self.main_layout.addWidget(self.btn_add_card, 1, 1)
         self.main_layout.addWidget(self.btn_start_quiz, 1, 2)
@@ -173,6 +175,8 @@ class MainWindow(QtWidgets.QWidget):
         self.btn_add_card.clicked.connect(self.add_card)
         self.btn_start_quiz.clicked.connect(self.start_quiz)
         self.lw_collections.itemClicked.connect(self.populate_table_widget)
+        self.lw_collections.itemDoubleClicked.connect(self.rename_collection)
+        self.btn_add_collection.clicked.connect(self.add_collection)
         
     def load_collections(self) -> None:  # sourcery skip: extract-method, use-named-expression
         self.lw_collections.clear()
@@ -197,6 +201,22 @@ class MainWindow(QtWidgets.QWidget):
             
             self.table_widget.setItem(row, 0, question_item)
             self.table_widget.setItem(row, 1, answer_item)
+    
+    def rename_collection(self) -> None:
+        current_item = self.lw_collections.currentItem()
+        new_name, ok = QtWidgets.QInputDialog.getText(self, 'Renommer la collection', 'Nouveau nom:', text=current_item.text())
+        if ok:
+            os.remove(os.path.join(COLLECTION_PATH, f"{current_item.text()}.json"))
+            collection = self.collections.pop(current_item.text())
+            self.collections[new_name] = collection
+            current_item.setText(new_name)
+    
+    def add_collection(self) -> None:
+        file_name, ok = QtWidgets.QInputDialog.getText(self, 'Ajouter une collection', 'Nom de la collection:')
+        if ok:
+            collection = Collection()
+            self.collections[file_name] = collection
+            self.lw_collections.addItem(file_name)
             
     def add_card(self) -> None:
         collection = self.collections[self.lw_collections.currentItem().text()]
@@ -225,7 +245,7 @@ class MainWindow(QtWidgets.QWidget):
             "Are you sure to quit?", QtWidgets.QMessageBox.Yes | 
             QtWidgets.QMessageBox.No, QtWidgets.QMessageBox.No)
 
-        for collection in self.collections.values():
-            collection.export_collection(COLLECTION_PATH)
+        for file, collection in self.collections.items():
+            collection.export_collection(COLLECTION_PATH, f"{file}.json")
 
         
